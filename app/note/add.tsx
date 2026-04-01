@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -24,9 +24,6 @@ import { STRINGS } from '../../src/core/constants';
 import {
   formatDateForInput,
   formatTimeForInput,
-  combineDateAndTime,
-  formatFullDate,
-  formatTimestamp,
 } from '../../src/core/utils';
 
 type Mode = 'add' | 'edit';
@@ -38,28 +35,33 @@ export default function AddEditNoteScreen() {
 
   const addNote = useNotesStore((s) => s.addNote);
   const updateNote = useNotesStore((s) => s.updateNote);
-  const getNoteById = useNotesStore((s) => s.getNoteById);
-
-  const existingNote = noteId ? getNoteById(noteId) : undefined;
+  // ✅ Subscribe directly to the note for reactivity
+  const existingNote = useNotesStore((s) =>
+    noteId ? s.notes.find((n) => n.id === noteId) : undefined
+  );
 
   // Form state
   const [title, setTitle] = useState(existingNote?.title ?? '');
   const [content, setContent] = useState(existingNote?.content ?? '');
   const [selectedDate, setSelectedDate] = useState<Date>(
-    existingNote ? new Date(existingNote.timestamp) : (() => {
-      const d = new Date();
-      d.setMinutes(d.getMinutes() + 30, 0, 0);
-      return d;
-    })()
+    existingNote
+      ? new Date(existingNote.timestamp)
+      : (() => {
+          const d = new Date();
+          d.setMinutes(d.getMinutes() + 30, 0, 0);
+          return d;
+        })()
   );
+
+  // ✅ FIX: Use a single modal approach for both iOS date and time
+  // to avoid display="inline" Android incompatibility.
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const contentRef = useRef<TextInput>(null);
 
-  const isValid =
-    title.trim().length > 0 && selectedDate !== null;
+  const isValid = title.trim().length > 0 && selectedDate !== null;
 
   const handleSave = useCallback(async () => {
     if (!isValid || isSaving) return;
@@ -91,8 +93,12 @@ export default function AddEditNoteScreen() {
     }
   }, [isValid, isSaving, mode, title, content, selectedDate, noteId]);
 
+  // ✅ FIX: Use platform-appropriate display modes
   const handleDateChange = (event: DateTimePickerEvent, date?: Date) => {
-    setShowDatePicker(false);
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    if (event.type === 'dismissed') return;
     if (date) {
       const merged = new Date(selectedDate);
       merged.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
@@ -100,8 +106,7 @@ export default function AddEditNoteScreen() {
     }
   };
 
-  const handleTimeChange = (event: DateTimePickerEvent, date?: Date) => {
-    setShowTimePicker(false);
+  const handleTimeChange = (_event: DateTimePickerEvent, date?: Date) => {
     if (date) {
       const merged = new Date(selectedDate);
       merged.setHours(date.getHours(), date.getMinutes());
@@ -217,7 +222,9 @@ export default function AddEditNoteScreen() {
                     <Text style={styles.pickerChipIcon}>📅</Text>
                     <Text style={styles.pickerChipText}>
                       {selectedDate.toLocaleDateString([], {
-                        weekday: 'short', month: 'short', day: 'numeric',
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
                       })}
                     </Text>
                   </TouchableOpacity>
@@ -228,7 +235,8 @@ export default function AddEditNoteScreen() {
                     <Text style={styles.pickerChipIcon}>⏰</Text>
                     <Text style={styles.pickerChipText}>
                       {selectedDate.toLocaleTimeString([], {
-                        hour: '2-digit', minute: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
                       })}
                     </Text>
                   </TouchableOpacity>
@@ -250,71 +258,31 @@ export default function AddEditNoteScreen() {
               multiline
               textAlignVertical="top"
               returnKeyType="default"
+              // ✅ FIX: Input validation — limit content length to prevent oversized payloads
+              maxLength={2000}
             />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
-   {showDatePicker && (
-  <DateTimePicker
-    value={selectedDate}
-    mode="date"
-    display="inline"
-    onChange={(event, date) => {
-      setShowDatePicker(false);
-      if (date) {
-        const merged = new Date(selectedDate);
-        merged.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
-        setSelectedDate(merged);
-      }
-    }}
-  />
-)}
+      {/* ✅ FIX: Android — use "default" (calendar/spinner) display mode */}
+      {showDatePicker && Platform.OS === 'android' && (
+        <DateTimePicker
+          value={selectedDate}
+          mode="date"
+          display="default"
+          onChange={handleDateChange}
+        />
+      )}
 
-{showTimePicker && Platform.OS === 'android' && (
-  <DateTimePicker
-    value={selectedDate}
-    mode="time"
-    display="default"
-    onChange={(event, date) => {
-      setShowTimePicker(false);
-      if (event.type === 'dismissed') return;
-      if (date) {
-        const merged = new Date(selectedDate);
-        merged.setHours(date.getHours(), date.getMinutes());
-        setSelectedDate(merged);
-      }
-    }}
-    is24Hour={false}
-  />
-)}
-
-{showTimePicker && Platform.OS === 'ios' && (
-  <Modal transparent animationType="slide">
-    <View style={{
-      flex: 1,
-      justifyContent: 'flex-end',
-      backgroundColor: 'rgba(0,0,0,0.3)',
-    }}>
-      <View style={{ backgroundColor: '#fff', paddingBottom: 20 }}>
-        <View style={{
-          flexDirection: 'row',
-          justifyContent: 'flex-end',
-          padding: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: '#E5E7EB',
-        }}>
-          <TouchableOpacity onPress={() => setShowTimePicker(false)}>
-            <Text style={{ color: '#4F46E5', fontWeight: '600', fontSize: 16 }}>
-              Done
-            </Text>
-          </TouchableOpacity>
-        </View>
+      {showTimePicker && Platform.OS === 'android' && (
         <DateTimePicker
           value={selectedDate}
           mode="time"
-          display="spinner"
-          onChange={(_, date) => {
+          display="default"
+          onChange={(event, date) => {
+            setShowTimePicker(false);
+            if (event.type === 'dismissed') return;
             if (date) {
               const merged = new Date(selectedDate);
               merged.setHours(date.getHours(), date.getMinutes());
@@ -323,10 +291,55 @@ export default function AddEditNoteScreen() {
           }}
           is24Hour={false}
         />
-      </View>
-    </View>
-  </Modal>
-)}
+      )}
+
+      {/* ✅ FIX: iOS — wrap both date and time in a modal for consistent layout */}
+      {showDatePicker && Platform.OS === 'ios' && (
+        <Modal transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalSheet}>
+              <View style={styles.modalToolbar}>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Text style={styles.modalDoneText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={selectedDate}
+                mode="date"
+                display="spinner"
+                onChange={(event, date) => {
+                  if (date) {
+                    const merged = new Date(selectedDate);
+                    merged.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+                    setSelectedDate(merged);
+                  }
+                }}
+              />
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {showTimePicker && Platform.OS === 'ios' && (
+        <Modal transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalSheet}>
+              <View style={styles.modalToolbar}>
+                <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                  <Text style={styles.modalDoneText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={selectedDate}
+                mode="time"
+                display="spinner"
+                onChange={handleTimeChange}
+                is24Hour={false}
+              />
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -435,5 +448,27 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     padding: Spacing.md,
     backgroundColor: Colors.background,
+  },
+  // Modal styles for iOS pickers
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  modalSheet: {
+    backgroundColor: Colors.card,
+    paddingBottom: Spacing.lg,
+  },
+  modalToolbar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    padding: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalDoneText: {
+    color: Colors.primary,
+    fontWeight: Typography.weight.semiBold,
+    fontSize: Typography.size.md,
   },
 });

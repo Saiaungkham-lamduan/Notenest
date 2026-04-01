@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,6 @@ import { useNotesStore } from '../../src/features/notes/store/notesStore';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../../src/core/theme';
 import { STRINGS } from '../../src/core/constants';
 import { formatTimestamp, formatFullDate, getSection } from '../../src/core/utils';
-import { Note } from '../../src/models/note';
 
 const SECTION_COLORS = {
   today: Colors.primary,
@@ -25,11 +24,14 @@ const SECTION_COLORS = {
 
 export default function NoteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const getNoteById = useNotesStore((s) => s.getNoteById);
   const deleteNote = useNotesStore((s) => s.deleteNote);
   const toggleComplete = useNotesStore((s) => s.toggleComplete);
 
-  const note = getNoteById(id);
+  // ✅ FIX: Subscribe directly to the note so the component re-renders
+  // when isCompleted or any other field changes.
+  // The old code used getNoteById (a stable function ref) which never
+  // triggered a re-render, so "Mark Complete" had no visual effect.
+  const note = useNotesStore((s) => s.notes.find((n) => n.id === id));
 
   useEffect(() => {
     if (!note) {

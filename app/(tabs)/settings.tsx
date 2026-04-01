@@ -13,6 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../../src/core/theme';
 import { STRINGS } from '../../src/core/constants';
 import { requestNotificationPermissions } from '../../src/services/notifications';
+import { useNotesStore } from '../../src/features/notes/store/notesStore';
 
 const STORAGE_KEY_NOTIFICATIONS = '@notenest/notifications_enabled';
 const STORAGE_KEY_DARK_MODE = '@notenest/dark_mode_enabled';
@@ -23,7 +24,6 @@ interface SettingRowProps {
   value?: boolean;
   onValueChange?: (v: boolean) => void;
   disabled?: boolean;
-  children?: React.ReactNode;
 }
 
 function SettingRow({
@@ -68,6 +68,9 @@ export default function SettingsScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [darkModeEnabled, setDarkModeEnabled] = useState(false);
 
+  // ✅ Access the store's reset action to clear notes from memory too
+  const clearAllNotes = useNotesStore((s) => s.loadNotes);
+
   useEffect(() => {
     loadPreferences();
   }, []);
@@ -80,7 +83,9 @@ export default function SettingsScreen() {
       ]);
       if (notif !== null) setNotificationsEnabled(notif === 'true');
       if (dark !== null) setDarkModeEnabled(dark === 'true');
-    } catch {}
+    } catch (err) {
+      if (__DEV__) console.error('[Settings] loadPreferences failed:', err);
+    }
   }
 
   async function handleNotificationsToggle(value: boolean) {
@@ -101,7 +106,41 @@ export default function SettingsScreen() {
   async function handleDarkModeToggle(value: boolean) {
     setDarkModeEnabled(value);
     await AsyncStorage.setItem(STORAGE_KEY_DARK_MODE, String(value));
-    // Full dark mode implementation: emit event / update theme context
+  }
+
+  // ✅ FIX: Delete All Data — PDPA Right to Erasure
+  function handleDeleteAllData() {
+    Alert.alert(
+      'Delete All Data',
+      'This will permanently delete ALL your notes and app preferences. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Everything',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Clear all AsyncStorage keys belonging to NoteNest
+              await AsyncStorage.multiRemove([
+                '@notenest/notes',
+                STORAGE_KEY_NOTIFICATIONS,
+                STORAGE_KEY_DARK_MODE,
+                '@notenest/consent_given',
+              ]);
+              // Reset in-memory Zustand store
+              useNotesStore.setState({ notes: [], isLoading: false });
+              Alert.alert(
+                'All Data Deleted',
+                'All your notes and preferences have been permanently removed from this device.'
+              );
+            } catch (err) {
+              if (__DEV__) console.error('[Settings] deleteAllData failed:', err);
+              Alert.alert('Error', 'Could not delete data. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   }
 
   return (
@@ -113,6 +152,7 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.content}>
+        {/* ── PREFERENCES ── */}
         <Text style={styles.sectionLabel}>PREFERENCES</Text>
 
         <View style={[styles.card, Shadows.sm]}>
@@ -131,6 +171,7 @@ export default function SettingsScreen() {
           />
         </View>
 
+        {/* ── ACCOUNT ── */}
         <Text style={[styles.sectionLabel, { marginTop: Spacing.lg }]}>
           ACCOUNT
         </Text>
@@ -141,6 +182,30 @@ export default function SettingsScreen() {
             subtitle={STRINGS.SETTINGS_CLOUD_SYNC_SUBTITLE}
             disabled
           />
+        </View>
+
+        {/* ── PRIVACY ── */}
+        <Text style={[styles.sectionLabel, { marginTop: Spacing.lg }]}>
+          PRIVACY
+        </Text>
+
+        <View style={[styles.card, Shadows.sm]}>
+          {/* ✅ FIX: Delete All Data button for PDPA Right to Erasure */}
+          <TouchableOpacity style={styles.dangerRow} onPress={handleDeleteAllData}>
+            <View style={styles.rowText}>
+              <Text style={styles.dangerLabel}>Delete All Data</Text>
+              <Text style={styles.rowSubtitle}>
+                Permanently remove all notes and preferences from this device
+              </Text>
+            </View>
+            <Text style={styles.dangerArrow}>›</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.privacyNote}>
+          <Text style={styles.privacyNoteText}>
+            🔒 All your notes are stored only on this device. Nothing is uploaded to any server.
+          </Text>
         </View>
 
         <Text style={styles.version}>NoteNest v1.0.0</Text>
@@ -225,6 +290,37 @@ const styles = StyleSheet.create({
     fontSize: Typography.size.xs,
     color: Colors.textTertiary,
     fontWeight: Typography.weight.medium,
+  },
+  // ✅ Danger row for Delete All Data
+  dangerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    gap: Spacing.md,
+  },
+  dangerLabel: {
+    fontSize: Typography.size.md,
+    fontWeight: Typography.weight.medium,
+    color: Colors.danger,
+    marginBottom: 2,
+  },
+  dangerArrow: {
+    fontSize: Typography.size.xl,
+    color: Colors.danger,
+    fontWeight: Typography.weight.medium,
+  },
+  privacyNote: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.successLight,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.success + '30',
+  },
+  privacyNoteText: {
+    fontSize: Typography.size.sm,
+    color: Colors.success,
+    lineHeight: Typography.size.sm * 1.5,
   },
   version: {
     textAlign: 'center',

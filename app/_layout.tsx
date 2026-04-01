@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
-import { StatusBar, View, Text, StyleSheet, Animated } from 'react-native';
+import { StatusBar, View, Text, StyleSheet } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { initDatabase } from '../src/services/database';
 import {
@@ -14,12 +15,16 @@ import {
 import { useNotesStore } from '../src/features/notes/store/notesStore';
 import { Colors, Typography, Spacing } from '../src/core/theme';
 import { STRINGS, ROUTES, TIMELINE } from '../src/core/constants';
+import ConsentScreen from './consent';
+
+const CONSENT_KEY = '@notenest/consent_given';
 
 export default function RootLayout() {
   const loadNotes = useNotesStore((s) => s.loadNotes);
   const highlightNote = useNotesStore((s) => s.highlightNote);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
-  const offlineBannerOpacity = useRef(new Animated.Value(0)).current;
+  // ✅ FIX: Track whether the user has accepted the privacy consent
+  const [consentGiven, setConsentGiven] = useState<boolean | null>(null);
 
   useEffect(() => {
     bootstrap();
@@ -33,11 +38,21 @@ export default function RootLayout() {
         requestNotificationPermissions(),
       ]);
       await loadNotes();
+
+      // Check if user has already given consent
+      const consent = await AsyncStorage.getItem(CONSENT_KEY);
+      setConsentGiven(consent === 'true');
     } catch (err) {
-      console.error('[Bootstrap] Failed:', err);
+      // ✅ FIX: Only log errors in development, not production
+      if (__DEV__) console.error('[Bootstrap] Failed:', err);
     } finally {
       setIsBootstrapping(false);
     }
+  }
+
+  async function handleConsentAccepted() {
+    await AsyncStorage.setItem(CONSENT_KEY, 'true');
+    setConsentGiven(true);
   }
 
   // Handle notification tap → navigate to note
@@ -57,13 +72,19 @@ export default function RootLayout() {
     };
   }, []);
 
-  if (isBootstrapping) {
+  // Show splash while bootstrapping
+  if (isBootstrapping || consentGiven === null) {
     return (
       <View style={styles.splash}>
         <Text style={styles.splashTitle}>{STRINGS.APP_NAME}</Text>
         <Text style={styles.splashSub}>Loading your notes...</Text>
       </View>
     );
+  }
+
+  // ✅ FIX: Show consent screen on first launch before app content
+  if (!consentGiven) {
+    return <ConsentScreen onAccept={handleConsentAccepted} />;
   }
 
   return (
@@ -111,20 +132,5 @@ const styles = StyleSheet.create({
   splashSub: {
     fontSize: Typography.size.md,
     color: Colors.textSecondary,
-  },
-  offlineBanner: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: Colors.warning,
-    paddingVertical: Spacing.xs,
-    alignItems: 'center',
-    zIndex: 9999,
-  },
-  offlineBannerText: {
-    fontSize: Typography.size.sm,
-    fontWeight: Typography.weight.semiBold,
-    color: Colors.textInverse,
   },
 });
