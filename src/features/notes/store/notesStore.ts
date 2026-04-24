@@ -39,7 +39,8 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       const notes = await fetchAllNotes();
       set({ notes, isLoading: false });
     } catch (err) {
-      console.error('[Store] loadNotes failed:', err);
+      // ✅ FIX: Only log errors in development — no stack traces in production
+      if (__DEV__) console.error('[Store] loadNotes failed:', err);
       set({ isLoading: false });
     }
   },
@@ -47,7 +48,6 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   addNote: async (input: NoteInput) => {
     const note = await insertNote(input);
 
-    // Insert into sorted position
     set((state) => {
       const next = [...state.notes, note].sort(
         (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
@@ -55,8 +55,10 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       return { notes: next };
     });
 
-    // Fire and forget notification scheduling
-    scheduleNoteNotification(note).catch(console.error);
+    // ✅ FIX: DEV-only error logging
+    scheduleNoteNotification(note).catch((err) => {
+      if (__DEV__) console.error('[Store] scheduleNoteNotification failed:', err);
+    });
 
     return note;
   },
@@ -67,14 +69,17 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     set((state) => {
       const next = state.notes
         .map((n) => (n.id === id ? updated : n))
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        .sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
       return { notes: next };
     });
 
-    // Reschedule notification if timestamp changed
     if (updates.timestamp) {
       await cancelNoteNotification(id);
-      scheduleNoteNotification(updated).catch(console.error);
+      scheduleNoteNotification(updated).catch((err) => {
+        if (__DEV__) console.error('[Store] rescheduleNotification failed:', err);
+      });
     }
   },
 
@@ -95,12 +100,15 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       notes: state.notes.map((n) => (n.id === id ? { ...n, isCompleted } : n)),
     }));
 
-    // Cancel notification when completed
     if (isCompleted) {
       await cancelNoteNotification(id);
     } else {
       const updated = get().notes.find((n) => n.id === id);
-      if (updated) scheduleNoteNotification(updated).catch(console.error);
+      if (updated) {
+        scheduleNoteNotification(updated).catch((err) => {
+          if (__DEV__) console.error('[Store] rescheduleOnUncomplete failed:', err);
+        });
+      }
     }
   },
 

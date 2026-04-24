@@ -3,16 +3,30 @@ import { Platform } from 'react-native';
 import { Note } from '../models/note';
 import { NOTIFICATION, STRINGS } from '../core/constants';
 
+const isWeb = Platform.OS === 'web';
+
+function createNoopSubscription(): Notifications.EventSubscription {
+  return {
+    remove: () => {},
+  } as Notifications.EventSubscription;
+}
+
 // Configure how notifications appear when app is foregrounded
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+if (!isWeb) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 export async function requestNotificationPermissions(): Promise<boolean> {
+  if (isWeb) return false;
+
   const { status: existing } = await Notifications.getPermissionsAsync();
   if (existing === 'granted') return true;
 
@@ -21,7 +35,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 }
 
 export async function setupNotificationChannel(): Promise<void> {
-  if (Platform.OS !== 'android') return;
+  if (Platform.OS !== 'android' || isWeb) return;
   await Notifications.setNotificationChannelAsync(NOTIFICATION.CHANNEL_ID, {
     name: NOTIFICATION.CHANNEL_NAME,
     description: NOTIFICATION.CHANNEL_DESCRIPTION,
@@ -33,6 +47,8 @@ export async function setupNotificationChannel(): Promise<void> {
 }
 
 export async function scheduleNoteNotification(note: Note): Promise<string | null> {
+  if (isWeb) return null;
+
   const scheduledDate = new Date(note.timestamp);
 
   // Don't schedule notifications in the past
@@ -64,6 +80,8 @@ export async function scheduleNoteNotification(note: Note): Promise<string | nul
 }
 
 export async function cancelNoteNotification(noteId: string): Promise<void> {
+  if (isWeb) return;
+
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const toCancel = scheduled.filter(
     (n) => (n.content.data as { noteId?: string })?.noteId === noteId
@@ -74,12 +92,16 @@ export async function cancelNoteNotification(noteId: string): Promise<void> {
 }
 
 export async function cancelAllNotifications(): Promise<void> {
+  if (isWeb) return;
+
   await Notifications.cancelAllScheduledNotificationsAsync();
 }
 
 export function addNotificationResponseListener(
   handler: (noteId: string) => void
 ): Notifications.EventSubscription {
+  if (isWeb) return createNoopSubscription();
+
   return Notifications.addNotificationResponseReceivedListener((response) => {
     const noteId = (response.notification.request.content.data as { noteId?: string })
       ?.noteId;
@@ -90,6 +112,8 @@ export function addNotificationResponseListener(
 export function addNotificationReceivedListener(
   handler: (noteId: string) => void
 ): Notifications.EventSubscription {
+  if (isWeb) return createNoopSubscription();
+
   return Notifications.addNotificationReceivedListener((notification) => {
     const noteId = (notification.request.content.data as { noteId?: string })?.noteId;
     if (noteId) handler(noteId);

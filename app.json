@@ -46,12 +46,17 @@
           "sounds": []
         }
       ],
-      "@react-native-community/datetimepicker",
-      
+      "@react-native-community/datetimepicker"
     ],
     "scheme": "notenest",
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5b22ee28-2246-4aea-a020-9c787b1a27f2"
+      }
     }
   }
 }

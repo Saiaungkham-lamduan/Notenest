@@ -292,6 +292,6 @@ const styles = StyleSheet.create({
   actionBtnText: {
     fontSize: Typography.size.sm,
     fontWeight: Typography.weight.semiBold,
-    color: Colors.textInverse,
+    color: Colors.textPrimary,
   },
 });
